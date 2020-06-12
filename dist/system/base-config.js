@@ -1,6 +1,6 @@
-'use strict';
+"use strict";
 
-System.register(['./auth-utilities'], function (_export, _context) {
+System.register(["./auth-utilities"], function (_export, _context) {
   "use strict";
 
   var merge, _createClass, BaseConfig;
@@ -34,13 +34,13 @@ System.register(['./auth-utilities'], function (_export, _context) {
         };
       }();
 
-      _export('BaseConfig', BaseConfig = function () {
+      _export("BaseConfig", BaseConfig = function () {
         BaseConfig.prototype.configure = function configure(incomingConfig) {
           merge(this._current, incomingConfig);
         };
 
         _createClass(BaseConfig, [{
-          key: 'current',
+          key: "current",
           get: function get() {
             return this._current;
           }
@@ -52,65 +52,66 @@ System.register(['./auth-utilities'], function (_export, _context) {
           this._current = {
             httpInterceptor: true,
             loginOnSignup: true,
-            baseUrl: '/',
-            loginRedirect: '#/',
-            logoutRedirect: '#/',
-            signupRedirect: '#/login',
-            loginUrl: '/auth/login',
-            signupUrl: '/auth/signup',
-            profileUrl: '/auth/me',
-            loginRoute: '/login',
-            signupRoute: '/signup',
+            baseUrl: "/",
+            loginRedirect: "#/",
+            logoutRedirect: "#/",
+            signupRedirect: "#/login",
+            loginUrl: "/auth/login",
+            signupUrl: "/auth/signup",
+            profileUrl: "/auth/me",
+            loginRoute: "/login",
+            signupRoute: "/signup",
             tokenRoot: false,
-            tokenName: 'token',
-            idTokenName: 'id_token',
-            tokenPrefix: 'aurelia',
-            responseTokenProp: 'access_token',
-            responseIdTokenProp: 'id_token',
-            unlinkUrl: '/auth/unlink/',
-            unlinkMethod: 'get',
-            authHeader: 'Authorization',
-            authToken: 'Bearer',
+            tokenName: "token",
+            idTokenName: "id_token",
+            tokenPrefix: "aurelia",
+            responseTokenProp: "access_token",
+            responseIdTokenProp: "id_token",
+            expiryDateProp: "_expires",
+            unlinkUrl: "/auth/unlink/",
+            unlinkMethod: "get",
+            authHeader: "Authorization",
+            authToken: "Bearer",
             withCredentials: true,
-            platform: 'browser',
-            storage: 'localStorage',
+            platform: "browser",
+            storage: "localStorage",
             providers: {
               identSrv: {
-                name: 'identSrv',
-                url: '/auth/identSrv',
+                name: "identSrv",
+                url: "/auth/identSrv",
 
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-                scope: ['profile', 'openid'],
-                responseType: 'code',
-                scopePrefix: '',
-                scopeDelimiter: ' ',
-                requiredUrlParams: ['scope', 'nonce'],
-                optionalUrlParams: ['display', 'state'],
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
+                scope: ["profile", "openid"],
+                responseType: "code",
+                scopePrefix: "",
+                scopeDelimiter: " ",
+                requiredUrlParams: ["scope", "nonce"],
+                optionalUrlParams: ["display", "state"],
                 state: function state() {
                   var rand = Math.random().toString(36).substr(2);
                   return encodeURIComponent(rand);
                 },
-                display: 'popup',
-                type: '2.0',
-                clientId: 'jsClient',
+                display: "popup",
+                type: "2.0",
+                clientId: "jsClient",
                 nonce: function nonce() {
-                  var val = ((Date.now() + Math.random()) * Math.random()).toString().replace('.', '');
+                  var val = ((Date.now() + Math.random()) * Math.random()).toString().replace(".", "");
                   return encodeURIComponent(val);
                 },
                 popupOptions: { width: 452, height: 633 }
               },
               google: {
-                name: 'google',
-                url: '/auth/google',
-                authorizationEndpoint: 'https://accounts.google.com/o/oauth2/auth',
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-                scope: ['profile', 'email'],
-                scopePrefix: 'openid',
-                scopeDelimiter: ' ',
-                requiredUrlParams: ['scope'],
-                optionalUrlParams: ['display', 'state'],
-                display: 'popup',
-                type: '2.0',
+                name: "google",
+                url: "/auth/google",
+                authorizationEndpoint: "https://accounts.google.com/o/oauth2/auth",
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
+                scope: ["profile", "email"],
+                scopePrefix: "openid",
+                scopeDelimiter: " ",
+                requiredUrlParams: ["scope"],
+                optionalUrlParams: ["display", "state"],
+                display: "popup",
+                type: "2.0",
                 state: function state() {
                   var rand = Math.random().toString(36).substr(2);
                   return encodeURIComponent(rand);
@@ -121,100 +122,100 @@ System.register(['./auth-utilities'], function (_export, _context) {
                 }
               },
               facebook: {
-                name: 'facebook',
-                url: '/auth/facebook',
-                authorizationEndpoint: 'https://www.facebook.com/v2.3/dialog/oauth',
-                redirectUri: window.location.origin + '/' || window.location.protocol + '//' + window.location.host + '/',
-                scope: ['email'],
-                scopeDelimiter: ',',
+                name: "facebook",
+                url: "/auth/facebook",
+                authorizationEndpoint: "https://www.facebook.com/v2.3/dialog/oauth",
+                redirectUri: window.location.origin + "/" || window.location.protocol + "//" + window.location.host + "/",
+                scope: ["email"],
+                scopeDelimiter: ",",
                 nonce: function nonce() {
                   return Math.random();
                 },
-                requiredUrlParams: ['nonce', 'display', 'scope'],
-                display: 'popup',
-                type: '2.0',
+                requiredUrlParams: ["nonce", "display", "scope"],
+                display: "popup",
+                type: "2.0",
                 popupOptions: {
                   width: 580,
                   height: 400
                 }
               },
               linkedin: {
-                name: 'linkedin',
-                url: '/auth/linkedin',
-                authorizationEndpoint: 'https://www.linkedin.com/uas/oauth2/authorization',
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-                requiredUrlParams: ['state'],
-                scope: ['r_emailaddress'],
-                scopeDelimiter: ' ',
-                state: 'STATE',
-                type: '2.0',
+                name: "linkedin",
+                url: "/auth/linkedin",
+                authorizationEndpoint: "https://www.linkedin.com/uas/oauth2/authorization",
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
+                requiredUrlParams: ["state"],
+                scope: ["r_emailaddress"],
+                scopeDelimiter: " ",
+                state: "STATE",
+                type: "2.0",
                 popupOptions: {
                   width: 527,
                   height: 582
                 }
               },
               github: {
-                name: 'github',
-                url: '/auth/github',
-                authorizationEndpoint: 'https://github.com/login/oauth/authorize',
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-                optionalUrlParams: ['scope'],
-                scope: ['user:email'],
-                scopeDelimiter: ' ',
-                type: '2.0',
+                name: "github",
+                url: "/auth/github",
+                authorizationEndpoint: "https://github.com/login/oauth/authorize",
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
+                optionalUrlParams: ["scope"],
+                scope: ["user:email"],
+                scopeDelimiter: " ",
+                type: "2.0",
                 popupOptions: {
                   width: 1020,
                   height: 618
                 }
               },
               yahoo: {
-                name: 'yahoo',
-                url: '/auth/yahoo',
-                authorizationEndpoint: 'https://api.login.yahoo.com/oauth2/request_auth',
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
+                name: "yahoo",
+                url: "/auth/yahoo",
+                authorizationEndpoint: "https://api.login.yahoo.com/oauth2/request_auth",
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
                 scope: [],
-                scopeDelimiter: ',',
-                type: '2.0',
+                scopeDelimiter: ",",
+                type: "2.0",
                 popupOptions: {
                   width: 559,
                   height: 519
                 }
               },
               twitter: {
-                name: 'twitter',
-                url: '/auth/twitter',
-                authorizationEndpoint: 'https://api.twitter.com/oauth/authenticate',
-                type: '1.0',
+                name: "twitter",
+                url: "/auth/twitter",
+                authorizationEndpoint: "https://api.twitter.com/oauth/authenticate",
+                type: "1.0",
                 popupOptions: {
                   width: 495,
                   height: 645
                 }
               },
               live: {
-                name: 'live',
-                url: '/auth/live',
-                authorizationEndpoint: 'https://login.live.com/oauth20_authorize.srf',
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-                scope: ['wl.emails'],
-                scopeDelimiter: ' ',
-                requiredUrlParams: ['display', 'scope'],
-                display: 'popup',
-                type: '2.0',
+                name: "live",
+                url: "/auth/live",
+                authorizationEndpoint: "https://login.live.com/oauth20_authorize.srf",
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
+                scope: ["wl.emails"],
+                scopeDelimiter: " ",
+                requiredUrlParams: ["display", "scope"],
+                display: "popup",
+                type: "2.0",
                 popupOptions: {
                   width: 500,
                   height: 560
                 }
               },
               instagram: {
-                name: 'instagram',
-                url: '/auth/instagram',
-                authorizationEndpoint: 'https://api.instagram.com/oauth/authorize',
-                redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-                requiredUrlParams: ['scope'],
-                scope: ['basic'],
-                scopeDelimiter: '+',
-                display: 'popup',
-                type: '2.0',
+                name: "instagram",
+                url: "/auth/instagram",
+                authorizationEndpoint: "https://api.instagram.com/oauth/authorize",
+                redirectUri: window.location.origin || window.location.protocol + "//" + window.location.host,
+                requiredUrlParams: ["scope"],
+                scope: ["basic"],
+                scopeDelimiter: "+",
+                display: "popup",
+                type: "2.0",
                 popupOptions: {
                   width: 550,
                   height: 369
@@ -227,7 +228,7 @@ System.register(['./auth-utilities'], function (_export, _context) {
         return BaseConfig;
       }());
 
-      _export('BaseConfig', BaseConfig);
+      _export("BaseConfig", BaseConfig);
     }
   };
 });

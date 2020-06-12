@@ -1,17 +1,19 @@
-import {inject} from 'aurelia-dependency-injection';
-import {BaseConfig}  from './base-config';
-import {Storage} from './storage';
-import {joinUrl, isObject, isString} from './auth-utilities';
+import { inject } from "aurelia-dependency-injection";
+import { BaseConfig } from "./base-config";
+import { Storage } from "./storage";
+import { joinUrl, isObject, isString } from "./auth-utilities";
 
 @inject(Storage, BaseConfig)
 export class Authentication {
   constructor(storage, config) {
     this.storage = storage;
     this.config = config.current;
-    this.tokenName = this.config.tokenPrefix ?
-      this.config.tokenPrefix + '_' + this.config.tokenName : this.config.tokenName;
-    this.idTokenName = this.config.tokenPrefix ?
-      this.config.tokenPrefix + '_' + this.config.idTokenName : this.config.idTokenName;
+    this.tokenName = this.config.tokenPrefix
+      ? this.config.tokenPrefix + "_" + this.config.tokenName
+      : this.config.tokenName;
+    this.idTokenName = this.config.tokenPrefix
+      ? this.config.tokenPrefix + "_" + this.config.idTokenName
+      : this.config.idTokenName;
   }
 
   getLoginRoute() {
@@ -23,18 +25,21 @@ export class Authentication {
   }
 
   getLoginUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.loginUrl) : this.config.loginUrl;
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.loginUrl)
+      : this.config.loginUrl;
   }
 
   getSignupUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.signupUrl) : this.config.signupUrl;
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.signupUrl)
+      : this.config.signupUrl;
   }
 
   getProfileUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.profileUrl) : this.config.profileUrl;
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.profileUrl)
+      : this.config.profileUrl;
   }
 
   getToken() {
@@ -47,9 +52,9 @@ export class Authentication {
   }
 
   decomposeToken(token) {
-    if (token && token.split('.').length === 3) {
-      let base64Url = token.split('.')[1];
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    if (token && token.split(".").length === 3) {
+      let base64Url = token.split(".")[1];
+      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
 
       try {
         return JSON.parse(decodeURIComponent(escape(window.atob(base64))));
@@ -77,12 +82,19 @@ export class Authentication {
     }
 
     if (!tokenToStore && response) {
-      tokenToStore = this.config.tokenRoot && response[this.config.tokenRoot] ?
-        response[this.config.tokenRoot][this.config.tokenName] : response[this.config.tokenName];
+      tokenToStore =
+        this.config.tokenRoot && response[this.config.tokenRoot]
+          ? response[this.config.tokenRoot][this.config.tokenName]
+          : response[this.config.tokenName];
     }
 
     if (tokenToStore) {
       this.storage.set(this.tokenName, tokenToStore);
+    }
+
+    let expiry = response && response[this.config.expiryDateProp];
+    if (expiry && this.config.expiryDateProp) {
+      this.storage.set(this.config.expiryDateProp, expiry);
     }
 
     // id token handling
@@ -111,29 +123,27 @@ export class Authentication {
       return false;
     }
 
-    // There is a token, but in a different format. Return true.
-    if (token.split('.').length !== 3) {
-      return true;
-    }
-
-    let exp;
-    try {
-      let base64Url = token.split('.')[1];
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      exp = JSON.parse(window.atob(base64)).exp;
-    } catch (error) {
-      return false;
-    }
-
-    if (exp) {
-      return Math.round(new Date().getTime() / 1000) <= exp;
+    let expStr = this.config && this.storage.get(this.config.expiryDateProp);
+    if (expStr) {
+      try {
+        let exp = Date.parse(expStr);
+        let now = Date.now();
+        if (now >= exp) {
+          //can't parse ->
+          return false;
+        }
+      } catch (error) {
+        console.error("Couldn't parse expiry date for access token.");
+        //Can't parse -> not authenticated
+        return false;
+      }
     }
 
     return true;
   }
 
   logout(redirect) {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       this.storage.remove(this.tokenName);
 
       if (this.config.logoutRedirect && !redirect) {
@@ -153,7 +163,9 @@ export class Authentication {
     return {
       request(request) {
         if (auth.isAuthenticated() && config.httpInterceptor) {
-          let tokenName = config.tokenPrefix ? `${config.tokenPrefix}_${config.tokenName}` : config.tokenName;
+          let tokenName = config.tokenPrefix
+            ? `${config.tokenPrefix}_${config.tokenName}`
+            : config.tokenName;
           let token = storage.get(tokenName);
 
           if (config.authHeader && config.authToken) {
@@ -163,7 +175,7 @@ export class Authentication {
           request.headers.set(config.authHeader, token);
         }
         return request;
-      }
+      },
     };
   }
 }

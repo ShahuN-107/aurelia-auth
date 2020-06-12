@@ -167,11 +167,195 @@ export function forEach(obj, iterator, context) {
   return obj;
 }
 
+import { inject } from "aurelia-dependency-injection";
+import { BaseConfig } from "./base-config";
+import { Storage } from "./storage";
+import { joinUrl, isObject, isString } from "./auth-utilities";
+
+@inject(Storage, BaseConfig)
+export class Authentication {
+  constructor(storage, config) {
+    this.storage = storage;
+    this.config = config.current;
+    this.tokenName = this.config.tokenPrefix
+      ? this.config.tokenPrefix + "_" + this.config.tokenName
+      : this.config.tokenName;
+    this.idTokenName = this.config.tokenPrefix
+      ? this.config.tokenPrefix + "_" + this.config.idTokenName
+      : this.config.idTokenName;
+  }
+
+  getLoginRoute() {
+    return this.config.loginRoute;
+  }
+
+  getLoginRedirect() {
+    return this.initialUrl || this.config.loginRedirect;
+  }
+
+  getLoginUrl() {
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.loginUrl)
+      : this.config.loginUrl;
+  }
+
+  getSignupUrl() {
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.signupUrl)
+      : this.config.signupUrl;
+  }
+
+  getProfileUrl() {
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.profileUrl)
+      : this.config.profileUrl;
+  }
+
+  getToken() {
+    return this.storage.get(this.tokenName);
+  }
+
+  getPayload() {
+    let token = this.storage.get(this.tokenName);
+    return this.decomposeToken(token);
+  }
+
+  decomposeToken(token) {
+    if (token && token.split(".").length === 3) {
+      let base64Url = token.split(".")[1];
+      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+
+      try {
+        return JSON.parse(decodeURIComponent(escape(window.atob(base64))));
+      } catch (error) {
+        return null;
+      }
+    }
+  }
+
+  setInitialUrl(url) {
+    this.initialUrl = url;
+  }
+
+  setToken(response, redirect) {
+    // access token handling
+    let accessToken = response && response[this.config.responseTokenProp];
+    let tokenToStore;
+
+    if (accessToken) {
+      if (isObject(accessToken) && isObject(accessToken.data)) {
+        response = accessToken;
+      } else if (isString(accessToken)) {
+        tokenToStore = accessToken;
+      }
+    }
+
+    if (!tokenToStore && response) {
+      tokenToStore =
+        this.config.tokenRoot && response[this.config.tokenRoot]
+          ? response[this.config.tokenRoot][this.config.tokenName]
+          : response[this.config.tokenName];
+    }
+
+    if (tokenToStore) {
+      this.storage.set(this.tokenName, tokenToStore);
+    }
+
+    let expiry = response && response[this.config.expiryDateProp];
+    if (expiry && this.config.expiryDateProp) {
+      this.storage.set(this.config.expiryDateProp, expiry);
+    }
+
+    // id token handling
+    let idToken = response && response[this.config.responseIdTokenProp];
+
+    if (idToken) {
+      this.storage.set(this.idTokenName, idToken);
+    }
+
+    if (this.config.loginRedirect && !redirect) {
+      window.location.href = this.getLoginRedirect();
+    } else if (redirect && isString(redirect)) {
+      window.location.href = window.encodeURI(redirect);
+    }
+  }
+
+  removeToken() {
+    this.storage.remove(this.tokenName);
+  }
+
+  isAuthenticated() {
+    let token = this.storage.get(this.tokenName);
+
+    // There's no token, so user is not authenticated.
+    if (!token) {
+      return false;
+    }
+
+    let expStr = this.config && this.storage.get(this.config.expiryDateProp);
+    if (expStr) {
+      try {
+        let exp = Date.parse(expStr);
+        let now = Date.now();
+        if (now >= exp) {
+          //can't parse ->
+          return false;
+        }
+      } catch (error) {
+        console.error("Couldn't parse expiry date for access token.");
+        //Can't parse -> not authenticated
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  logout(redirect) {
+    return new Promise((resolve) => {
+      this.storage.remove(this.tokenName);
+
+      if (this.config.logoutRedirect && !redirect) {
+        window.location.href = this.config.logoutRedirect;
+      } else if (isString(redirect)) {
+        window.location.href = redirect;
+      }
+
+      resolve();
+    });
+  }
+
+  get tokenInterceptor() {
+    let config = this.config;
+    let storage = this.storage;
+    let auth = this;
+    return {
+      request(request) {
+        if (auth.isAuthenticated() && config.httpInterceptor) {
+          let tokenName = config.tokenPrefix
+            ? `${config.tokenPrefix}_${config.tokenName}`
+            : config.tokenName;
+          let token = storage.get(tokenName);
+
+          if (config.authHeader && config.authToken) {
+            token = `${config.authToken} ${token}`;
+          }
+
+          request.headers.set(config.authHeader, token);
+        }
+        return request;
+      },
+    };
+  }
+}
+
 export class AuthFilterValueConverter {
   toView(routes, isAuthenticated) {
     return routes.filter(r => r.config.auth === undefined || r.config.auth === isAuthenticated);
   }
 }
+
+import { merge } from "./auth-utilities";
 
 export class BaseConfig {
   configure(incomingConfig) {
@@ -186,176 +370,235 @@ export class BaseConfig {
     this._current = {
       httpInterceptor: true,
       loginOnSignup: true,
-      baseUrl: '/',
-      loginRedirect: '#/',
-      logoutRedirect: '#/',
-      signupRedirect: '#/login',
-      loginUrl: '/auth/login',
-      signupUrl: '/auth/signup',
-      profileUrl: '/auth/me',
-      loginRoute: '/login',
-      signupRoute: '/signup',
+      baseUrl: "/",
+      loginRedirect: "#/",
+      logoutRedirect: "#/",
+      signupRedirect: "#/login",
+      loginUrl: "/auth/login",
+      signupUrl: "/auth/signup",
+      profileUrl: "/auth/me",
+      loginRoute: "/login",
+      signupRoute: "/signup",
       tokenRoot: false,
-      tokenName: 'token',
-      idTokenName: 'id_token',
-      tokenPrefix: 'aurelia',
-      responseTokenProp: 'access_token',
-      responseIdTokenProp: 'id_token',
-      unlinkUrl: '/auth/unlink/',
-      unlinkMethod: 'get',
-      authHeader: 'Authorization',
-      authToken: 'Bearer',
+      tokenName: "token",
+      idTokenName: "id_token",
+      tokenPrefix: "aurelia",
+      responseTokenProp: "access_token",
+      responseIdTokenProp: "id_token",
+      expiryDateProp: "_expires",
+      unlinkUrl: "/auth/unlink/",
+      unlinkMethod: "get",
+      authHeader: "Authorization",
+      authToken: "Bearer",
       withCredentials: true,
-      platform: 'browser',
-      storage: 'localStorage',
+      platform: "browser",
+      storage: "localStorage",
       providers: {
         identSrv: {
-          name: 'identSrv',
-          url: '/auth/identSrv',
+          name: "identSrv",
+          url: "/auth/identSrv",
           //authorizationEndpoint: 'http://localhost:22530/connect/authorize',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          scope: ['profile', 'openid'],
-          responseType: 'code',
-          scopePrefix: '',
-          scopeDelimiter: ' ',
-          requiredUrlParams: ['scope', 'nonce'],
-          optionalUrlParams: ['display', 'state'],
-          state: function() {
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          scope: ["profile", "openid"],
+          responseType: "code",
+          scopePrefix: "",
+          scopeDelimiter: " ",
+          requiredUrlParams: ["scope", "nonce"],
+          optionalUrlParams: ["display", "state"],
+          state: function () {
             let rand = Math.random().toString(36).substr(2);
             return encodeURIComponent(rand);
           },
-          display: 'popup',
-          type: '2.0',
-          clientId: 'jsClient',
-          nonce: function() {
-            let val = ((Date.now() + Math.random()) * Math.random()).toString().replace('.', '');
+          display: "popup",
+          type: "2.0",
+          clientId: "jsClient",
+          nonce: function () {
+            let val = ((Date.now() + Math.random()) * Math.random())
+              .toString()
+              .replace(".", "");
             return encodeURIComponent(val);
           },
-          popupOptions: { width: 452, height: 633 }
+          popupOptions: { width: 452, height: 633 },
         },
         google: {
-          name: 'google',
-          url: '/auth/google',
-          authorizationEndpoint: 'https://accounts.google.com/o/oauth2/auth',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          scope: ['profile', 'email'],
-          scopePrefix: 'openid',
-          scopeDelimiter: ' ',
-          requiredUrlParams: ['scope'],
-          optionalUrlParams: ['display', 'state'],
-          display: 'popup',
-          type: '2.0',
-          state: function() {
+          name: "google",
+          url: "/auth/google",
+          authorizationEndpoint: "https://accounts.google.com/o/oauth2/auth",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          scope: ["profile", "email"],
+          scopePrefix: "openid",
+          scopeDelimiter: " ",
+          requiredUrlParams: ["scope"],
+          optionalUrlParams: ["display", "state"],
+          display: "popup",
+          type: "2.0",
+          state: function () {
             let rand = Math.random().toString(36).substr(2);
             return encodeURIComponent(rand);
           },
           popupOptions: {
             width: 452,
-            height: 633
-          }
+            height: 633,
+          },
         },
         facebook: {
-          name: 'facebook',
-          url: '/auth/facebook',
-          authorizationEndpoint: 'https://www.facebook.com/v2.3/dialog/oauth',
-          redirectUri: window.location.origin + '/' || window.location.protocol + '//' + window.location.host + '/',
-          scope: ['email'],
-          scopeDelimiter: ',',
-          nonce: function() {
+          name: "facebook",
+          url: "/auth/facebook",
+          authorizationEndpoint: "https://www.facebook.com/v2.3/dialog/oauth",
+          redirectUri:
+            window.location.origin + "/" ||
+            window.location.protocol + "//" + window.location.host + "/",
+          scope: ["email"],
+          scopeDelimiter: ",",
+          nonce: function () {
             return Math.random();
           },
-          requiredUrlParams: ['nonce', 'display', 'scope'],
-          display: 'popup',
-          type: '2.0',
+          requiredUrlParams: ["nonce", "display", "scope"],
+          display: "popup",
+          type: "2.0",
           popupOptions: {
             width: 580,
-            height: 400
-          }
+            height: 400,
+          },
         },
         linkedin: {
-          name: 'linkedin',
-          url: '/auth/linkedin',
-          authorizationEndpoint: 'https://www.linkedin.com/uas/oauth2/authorization',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          requiredUrlParams: ['state'],
-          scope: ['r_emailaddress'],
-          scopeDelimiter: ' ',
-          state: 'STATE',
-          type: '2.0',
+          name: "linkedin",
+          url: "/auth/linkedin",
+          authorizationEndpoint:
+            "https://www.linkedin.com/uas/oauth2/authorization",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          requiredUrlParams: ["state"],
+          scope: ["r_emailaddress"],
+          scopeDelimiter: " ",
+          state: "STATE",
+          type: "2.0",
           popupOptions: {
             width: 527,
-            height: 582
-          }
+            height: 582,
+          },
         },
         github: {
-          name: 'github',
-          url: '/auth/github',
-          authorizationEndpoint: 'https://github.com/login/oauth/authorize',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          optionalUrlParams: ['scope'],
-          scope: ['user:email'],
-          scopeDelimiter: ' ',
-          type: '2.0',
+          name: "github",
+          url: "/auth/github",
+          authorizationEndpoint: "https://github.com/login/oauth/authorize",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          optionalUrlParams: ["scope"],
+          scope: ["user:email"],
+          scopeDelimiter: " ",
+          type: "2.0",
           popupOptions: {
             width: 1020,
-            height: 618
-          }
+            height: 618,
+          },
         },
         yahoo: {
-          name: 'yahoo',
-          url: '/auth/yahoo',
-          authorizationEndpoint: 'https://api.login.yahoo.com/oauth2/request_auth',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
+          name: "yahoo",
+          url: "/auth/yahoo",
+          authorizationEndpoint:
+            "https://api.login.yahoo.com/oauth2/request_auth",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
           scope: [],
-          scopeDelimiter: ',',
-          type: '2.0',
+          scopeDelimiter: ",",
+          type: "2.0",
           popupOptions: {
             width: 559,
-            height: 519
-          }
+            height: 519,
+          },
         },
         twitter: {
-          name: 'twitter',
-          url: '/auth/twitter',
-          authorizationEndpoint: 'https://api.twitter.com/oauth/authenticate',
-          type: '1.0',
+          name: "twitter",
+          url: "/auth/twitter",
+          authorizationEndpoint: "https://api.twitter.com/oauth/authenticate",
+          type: "1.0",
           popupOptions: {
             width: 495,
-            height: 645
-          }
+            height: 645,
+          },
         },
         live: {
-          name: 'live',
-          url: '/auth/live',
-          authorizationEndpoint: 'https://login.live.com/oauth20_authorize.srf',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          scope: ['wl.emails'],
-          scopeDelimiter: ' ',
-          requiredUrlParams: ['display', 'scope'],
-          display: 'popup',
-          type: '2.0',
+          name: "live",
+          url: "/auth/live",
+          authorizationEndpoint: "https://login.live.com/oauth20_authorize.srf",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          scope: ["wl.emails"],
+          scopeDelimiter: " ",
+          requiredUrlParams: ["display", "scope"],
+          display: "popup",
+          type: "2.0",
           popupOptions: {
             width: 500,
-            height: 560
-          }
+            height: 560,
+          },
         },
         instagram: {
-          name: 'instagram',
-          url: '/auth/instagram',
-          authorizationEndpoint: 'https://api.instagram.com/oauth/authorize',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          requiredUrlParams: ['scope'],
-          scope: ['basic'],
-          scopeDelimiter: '+',
-          display: 'popup',
-          type: '2.0',
+          name: "instagram",
+          url: "/auth/instagram",
+          authorizationEndpoint: "https://api.instagram.com/oauth/authorize",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          requiredUrlParams: ["scope"],
+          scope: ["basic"],
+          scopeDelimiter: "+",
+          display: "popup",
+          type: "2.0",
           popupOptions: {
             width: 550,
-            height: 369
-          }
-        }
-      }
+            height: 369,
+          },
+        },
+      },
     };
+  }
+}
+
+@inject(HttpClient, Authentication )
+export class FetchConfig {
+  constructor(httpClient, authService) {
+    this.httpClient = httpClient;
+    this.auth = authService;
+  }
+
+  configure() {
+    this.httpClient.configure(httpConfig => {
+      httpConfig
+        .withInterceptor(this.auth.tokenInterceptor);
+    });
+  }
+}
+
+@inject(Authentication)
+export class AuthorizeStep {
+  constructor(auth) {
+    this.auth = auth;
+  }
+  run(routingContext, next) {
+    let isLoggedIn = this.auth.isAuthenticated();
+    let loginRoute = this.auth.getLoginRoute();
+
+    if (routingContext.getAllInstructions().some(i => i.config.auth)) {
+      if (!isLoggedIn) {
+        this.auth.setInitialUrl(window.location.href);
+        return next.cancel(new Redirect(loginRoute));
+      }
+    } else if (isLoggedIn && routingContext.getAllInstructions().some(i => i.fragment === loginRoute)) {
+      let loginRedirect = this.auth.getLoginRedirect();
+      return next.cancel(new Redirect(loginRedirect));
+    }
+
+    return next();
   }
 }
 
@@ -515,171 +758,6 @@ export class Storage {
   }
 }
 
-@inject(Storage, BaseConfig)
-export class Authentication {
-  constructor(storage, config) {
-    this.storage = storage;
-    this.config = config.current;
-    this.tokenName = this.config.tokenPrefix ?
-      this.config.tokenPrefix + '_' + this.config.tokenName : this.config.tokenName;
-    this.idTokenName = this.config.tokenPrefix ?
-      this.config.tokenPrefix + '_' + this.config.idTokenName : this.config.idTokenName;
-  }
-
-  getLoginRoute() {
-    return this.config.loginRoute;
-  }
-
-  getLoginRedirect() {
-    return this.initialUrl || this.config.loginRedirect;
-  }
-
-  getLoginUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.loginUrl) : this.config.loginUrl;
-  }
-
-  getSignupUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.signupUrl) : this.config.signupUrl;
-  }
-
-  getProfileUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.profileUrl) : this.config.profileUrl;
-  }
-
-  getToken() {
-    return this.storage.get(this.tokenName);
-  }
-
-  getPayload() {
-    let token = this.storage.get(this.tokenName);
-    return this.decomposeToken(token);
-  }
-
-  decomposeToken(token) {
-    if (token && token.split('.').length === 3) {
-      let base64Url = token.split('.')[1];
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-
-      try {
-        return JSON.parse(decodeURIComponent(escape(window.atob(base64))));
-      } catch (error) {
-        return null;
-      }
-    }
-  }
-
-  setInitialUrl(url) {
-    this.initialUrl = url;
-  }
-
-  setToken(response, redirect) {
-    // access token handling
-    let accessToken = response && response[this.config.responseTokenProp];
-    let tokenToStore;
-
-    if (accessToken) {
-      if (isObject(accessToken) && isObject(accessToken.data)) {
-        response = accessToken;
-      } else if (isString(accessToken)) {
-        tokenToStore = accessToken;
-      }
-    }
-
-    if (!tokenToStore && response) {
-      tokenToStore = this.config.tokenRoot && response[this.config.tokenRoot] ?
-        response[this.config.tokenRoot][this.config.tokenName] : response[this.config.tokenName];
-    }
-
-    if (tokenToStore) {
-      this.storage.set(this.tokenName, tokenToStore);
-    }
-
-    // id token handling
-    let idToken = response && response[this.config.responseIdTokenProp];
-
-    if (idToken) {
-      this.storage.set(this.idTokenName, idToken);
-    }
-
-    if (this.config.loginRedirect && !redirect) {
-      window.location.href = this.getLoginRedirect();
-    } else if (redirect && isString(redirect)) {
-      window.location.href = window.encodeURI(redirect);
-    }
-  }
-
-  removeToken() {
-    this.storage.remove(this.tokenName);
-  }
-
-  isAuthenticated() {
-    let token = this.storage.get(this.tokenName);
-
-    // There's no token, so user is not authenticated.
-    if (!token) {
-      return false;
-    }
-
-    // There is a token, but in a different format. Return true.
-    if (token.split('.').length !== 3) {
-      return true;
-    }
-
-    let exp;
-    try {
-      let base64Url = token.split('.')[1];
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      exp = JSON.parse(window.atob(base64)).exp;
-    } catch (error) {
-      return false;
-    }
-
-    if (exp) {
-      return Math.round(new Date().getTime() / 1000) <= exp;
-    }
-
-    return true;
-  }
-
-  logout(redirect) {
-    return new Promise(resolve => {
-      this.storage.remove(this.tokenName);
-
-      if (this.config.logoutRedirect && !redirect) {
-        window.location.href = this.config.logoutRedirect;
-      } else if (isString(redirect)) {
-        window.location.href = redirect;
-      }
-
-      resolve();
-    });
-  }
-
-  get tokenInterceptor() {
-    let config = this.config;
-    let storage = this.storage;
-    let auth = this;
-    return {
-      request(request) {
-        if (auth.isAuthenticated() && config.httpInterceptor) {
-          let tokenName = config.tokenPrefix ? `${config.tokenPrefix}_${config.tokenName}` : config.tokenName;
-          let token = storage.get(tokenName);
-
-          if (config.authHeader && config.authToken) {
-            token = `${config.authToken} ${token}`;
-          }
-
-          request.headers.set(config.authHeader, token);
-        }
-        return request;
-      }
-    };
-  }
-}
-
 @inject(Storage, Popup, HttpClient, BaseConfig)
 export class OAuth1 {
   constructor(storage, popup, http, config) {
@@ -751,44 +829,6 @@ export class OAuth1 {
     let str = [];
     forEach(obj, (value, key) => str.push(encodeURIComponent(key) + '=' + encodeURIComponent(value)));
     return str.join('&');
-  }
-}
-
-@inject(HttpClient, Authentication )
-export class FetchConfig {
-  constructor(httpClient, authService) {
-    this.httpClient = httpClient;
-    this.auth = authService;
-  }
-
-  configure() {
-    this.httpClient.configure(httpConfig => {
-      httpConfig
-        .withInterceptor(this.auth.tokenInterceptor);
-    });
-  }
-}
-
-@inject(Authentication)
-export class AuthorizeStep {
-  constructor(auth) {
-    this.auth = auth;
-  }
-  run(routingContext, next) {
-    let isLoggedIn = this.auth.isAuthenticated();
-    let loginRoute = this.auth.getLoginRoute();
-
-    if (routingContext.getAllInstructions().some(i => i.config.auth)) {
-      if (!isLoggedIn) {
-        this.auth.setInitialUrl(window.location.href);
-        return next.cancel(new Redirect(loginRoute));
-      }
-    } else if (isLoggedIn && routingContext.getAllInstructions().some(i => i.fragment === loginRoute)) {
-      let loginRedirect = this.auth.getLoginRedirect();
-      return next.cancel(new Redirect(loginRedirect));
-    }
-
-    return next();
   }
 }
 
