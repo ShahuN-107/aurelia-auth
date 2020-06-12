@@ -1,6 +1,6 @@
-'use strict';
+"use strict";
 
-System.register(['aurelia-dependency-injection', './base-config', './storage', './auth-utilities'], function (_export, _context) {
+System.register(["aurelia-dependency-injection", "./base-config", "./storage", "./auth-utilities"], function (_export, _context) {
   "use strict";
 
   var inject, BaseConfig, Storage, joinUrl, isObject, isString, _createClass, _dec, _class, Authentication;
@@ -42,14 +42,14 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
         };
       }();
 
-      _export('Authentication', Authentication = (_dec = inject(Storage, BaseConfig), _dec(_class = function () {
+      _export("Authentication", Authentication = (_dec = inject(Storage, BaseConfig), _dec(_class = function () {
         function Authentication(storage, config) {
           _classCallCheck(this, Authentication);
 
           this.storage = storage;
           this.config = config.current;
-          this.tokenName = this.config.tokenPrefix ? this.config.tokenPrefix + '_' + this.config.tokenName : this.config.tokenName;
-          this.idTokenName = this.config.tokenPrefix ? this.config.tokenPrefix + '_' + this.config.idTokenName : this.config.idTokenName;
+          this.tokenName = this.config.tokenPrefix ? this.config.tokenPrefix + "_" + this.config.tokenName : this.config.tokenName;
+          this.idTokenName = this.config.tokenPrefix ? this.config.tokenPrefix + "_" + this.config.idTokenName : this.config.idTokenName;
         }
 
         Authentication.prototype.getLoginRoute = function getLoginRoute() {
@@ -82,9 +82,9 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
         };
 
         Authentication.prototype.decomposeToken = function decomposeToken(token) {
-          if (token && token.split('.').length === 3) {
-            var base64Url = token.split('.')[1];
-            var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          if (token && token.split(".").length === 3) {
+            var base64Url = token.split(".")[1];
+            var base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
 
             try {
               return JSON.parse(decodeURIComponent(escape(window.atob(base64))));
@@ -99,6 +99,8 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
         };
 
         Authentication.prototype.setToken = function setToken(response, redirect) {
+          debugger;
+
           var accessToken = response && response[this.config.responseTokenProp];
           var tokenToStore = void 0;
 
@@ -142,14 +144,14 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
             return false;
           }
 
-          if (token.split('.').length !== 3) {
+          if (token.split(".").length !== 3) {
             return true;
           }
 
           var exp = void 0;
           try {
-            var base64Url = token.split('.')[1];
-            var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            var base64Url = token.split(".")[1];
+            var base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
             exp = JSON.parse(window.atob(base64)).exp;
           } catch (error) {
             return false;
@@ -179,7 +181,7 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
         };
 
         _createClass(Authentication, [{
-          key: 'tokenInterceptor',
+          key: "tokenInterceptor",
           get: function get() {
             var config = this.config;
             var storage = this.storage;
@@ -187,11 +189,11 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
             return {
               request: function request(_request) {
                 if (auth.isAuthenticated() && config.httpInterceptor) {
-                  var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
+                  var tokenName = config.tokenPrefix ? config.tokenPrefix + "_" + config.tokenName : config.tokenName;
                   var token = storage.get(tokenName);
 
                   if (config.authHeader && config.authToken) {
-                    token = config.authToken + ' ' + token;
+                    token = config.authToken + " " + token;
                   }
 
                   _request.headers.set(config.authHeader, token);
@@ -205,7 +207,7 @@ System.register(['aurelia-dependency-injection', './base-config', './storage', '
         return Authentication;
       }()) || _class));
 
-      _export('Authentication', Authentication);
+      _export("Authentication", Authentication);
     }
   };
 });

@@ -167,6 +167,186 @@ export function forEach(obj, iterator, context) {
   return obj;
 }
 
+import { inject } from "aurelia-dependency-injection";
+import { BaseConfig } from "./base-config";
+import { Storage } from "./storage";
+import { joinUrl, isObject, isString } from "./auth-utilities";
+
+@inject(Storage, BaseConfig)
+export class Authentication {
+  constructor(storage, config) {
+    this.storage = storage;
+    this.config = config.current;
+    this.tokenName = this.config.tokenPrefix
+      ? this.config.tokenPrefix + "_" + this.config.tokenName
+      : this.config.tokenName;
+    this.idTokenName = this.config.tokenPrefix
+      ? this.config.tokenPrefix + "_" + this.config.idTokenName
+      : this.config.idTokenName;
+  }
+
+  getLoginRoute() {
+    return this.config.loginRoute;
+  }
+
+  getLoginRedirect() {
+    return this.initialUrl || this.config.loginRedirect;
+  }
+
+  getLoginUrl() {
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.loginUrl)
+      : this.config.loginUrl;
+  }
+
+  getSignupUrl() {
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.signupUrl)
+      : this.config.signupUrl;
+  }
+
+  getProfileUrl() {
+    return this.config.baseUrl
+      ? joinUrl(this.config.baseUrl, this.config.profileUrl)
+      : this.config.profileUrl;
+  }
+
+  getToken() {
+    return this.storage.get(this.tokenName);
+  }
+
+  getPayload() {
+    let token = this.storage.get(this.tokenName);
+    return this.decomposeToken(token);
+  }
+
+  decomposeToken(token) {
+    if (token && token.split(".").length === 3) {
+      let base64Url = token.split(".")[1];
+      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+
+      try {
+        return JSON.parse(decodeURIComponent(escape(window.atob(base64))));
+      } catch (error) {
+        return null;
+      }
+    }
+  }
+
+  setInitialUrl(url) {
+    this.initialUrl = url;
+  }
+
+  setToken(response, redirect) {
+    debugger;
+    // access token handling
+    let accessToken = response && response[this.config.responseTokenProp];
+    let tokenToStore;
+
+    if (accessToken) {
+      if (isObject(accessToken) && isObject(accessToken.data)) {
+        response = accessToken;
+      } else if (isString(accessToken)) {
+        tokenToStore = accessToken;
+      }
+    }
+
+    if (!tokenToStore && response) {
+      tokenToStore =
+        this.config.tokenRoot && response[this.config.tokenRoot]
+          ? response[this.config.tokenRoot][this.config.tokenName]
+          : response[this.config.tokenName];
+    }
+
+    if (tokenToStore) {
+      this.storage.set(this.tokenName, tokenToStore);
+    }
+
+    // id token handling
+    let idToken = response && response[this.config.responseIdTokenProp];
+
+    if (idToken) {
+      this.storage.set(this.idTokenName, idToken);
+    }
+
+    if (this.config.loginRedirect && !redirect) {
+      window.location.href = this.getLoginRedirect();
+    } else if (redirect && isString(redirect)) {
+      window.location.href = window.encodeURI(redirect);
+    }
+  }
+
+  removeToken() {
+    this.storage.remove(this.tokenName);
+  }
+
+  isAuthenticated() {
+    let token = this.storage.get(this.tokenName);
+
+    // There's no token, so user is not authenticated.
+    if (!token) {
+      return false;
+    }
+
+    // There is a token, but in a different format. Return true.
+    if (token.split(".").length !== 3) {
+      return true;
+    }
+
+    let exp;
+    try {
+      let base64Url = token.split(".")[1];
+      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      exp = JSON.parse(window.atob(base64)).exp;
+    } catch (error) {
+      return false;
+    }
+
+    if (exp) {
+      return Math.round(new Date().getTime() / 1000) <= exp;
+    }
+
+    return true;
+  }
+
+  logout(redirect) {
+    return new Promise((resolve) => {
+      this.storage.remove(this.tokenName);
+
+      if (this.config.logoutRedirect && !redirect) {
+        window.location.href = this.config.logoutRedirect;
+      } else if (isString(redirect)) {
+        window.location.href = redirect;
+      }
+
+      resolve();
+    });
+  }
+
+  get tokenInterceptor() {
+    let config = this.config;
+    let storage = this.storage;
+    let auth = this;
+    return {
+      request(request) {
+        if (auth.isAuthenticated() && config.httpInterceptor) {
+          let tokenName = config.tokenPrefix
+            ? `${config.tokenPrefix}_${config.tokenName}`
+            : config.tokenName;
+          let token = storage.get(tokenName);
+
+          if (config.authHeader && config.authToken) {
+            token = `${config.authToken} ${token}`;
+          }
+
+          request.headers.set(config.authHeader, token);
+        }
+        return request;
+      },
+    };
+  }
+}
+
 export class AuthFilterValueConverter {
   toView(routes, isAuthenticated) {
     return routes.filter(r => r.config.auth === undefined || r.config.auth === isAuthenticated);
@@ -359,6 +539,44 @@ export class BaseConfig {
   }
 }
 
+@inject(HttpClient, Authentication )
+export class FetchConfig {
+  constructor(httpClient, authService) {
+    this.httpClient = httpClient;
+    this.auth = authService;
+  }
+
+  configure() {
+    this.httpClient.configure(httpConfig => {
+      httpConfig
+        .withInterceptor(this.auth.tokenInterceptor);
+    });
+  }
+}
+
+@inject(Authentication)
+export class AuthorizeStep {
+  constructor(auth) {
+    this.auth = auth;
+  }
+  run(routingContext, next) {
+    let isLoggedIn = this.auth.isAuthenticated();
+    let loginRoute = this.auth.getLoginRoute();
+
+    if (routingContext.getAllInstructions().some(i => i.config.auth)) {
+      if (!isLoggedIn) {
+        this.auth.setInitialUrl(window.location.href);
+        return next.cancel(new Redirect(loginRoute));
+      }
+    } else if (isLoggedIn && routingContext.getAllInstructions().some(i => i.fragment === loginRoute)) {
+      let loginRedirect = this.auth.getLoginRedirect();
+      return next.cancel(new Redirect(loginRedirect));
+    }
+
+    return next();
+  }
+}
+
 @inject(BaseConfig)
 export class Popup {
   constructor(config) {
@@ -515,171 +733,6 @@ export class Storage {
   }
 }
 
-@inject(Storage, BaseConfig)
-export class Authentication {
-  constructor(storage, config) {
-    this.storage = storage;
-    this.config = config.current;
-    this.tokenName = this.config.tokenPrefix ?
-      this.config.tokenPrefix + '_' + this.config.tokenName : this.config.tokenName;
-    this.idTokenName = this.config.tokenPrefix ?
-      this.config.tokenPrefix + '_' + this.config.idTokenName : this.config.idTokenName;
-  }
-
-  getLoginRoute() {
-    return this.config.loginRoute;
-  }
-
-  getLoginRedirect() {
-    return this.initialUrl || this.config.loginRedirect;
-  }
-
-  getLoginUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.loginUrl) : this.config.loginUrl;
-  }
-
-  getSignupUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.signupUrl) : this.config.signupUrl;
-  }
-
-  getProfileUrl() {
-    return this.config.baseUrl ?
-      joinUrl(this.config.baseUrl, this.config.profileUrl) : this.config.profileUrl;
-  }
-
-  getToken() {
-    return this.storage.get(this.tokenName);
-  }
-
-  getPayload() {
-    let token = this.storage.get(this.tokenName);
-    return this.decomposeToken(token);
-  }
-
-  decomposeToken(token) {
-    if (token && token.split('.').length === 3) {
-      let base64Url = token.split('.')[1];
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-
-      try {
-        return JSON.parse(decodeURIComponent(escape(window.atob(base64))));
-      } catch (error) {
-        return null;
-      }
-    }
-  }
-
-  setInitialUrl(url) {
-    this.initialUrl = url;
-  }
-
-  setToken(response, redirect) {
-    // access token handling
-    let accessToken = response && response[this.config.responseTokenProp];
-    let tokenToStore;
-
-    if (accessToken) {
-      if (isObject(accessToken) && isObject(accessToken.data)) {
-        response = accessToken;
-      } else if (isString(accessToken)) {
-        tokenToStore = accessToken;
-      }
-    }
-
-    if (!tokenToStore && response) {
-      tokenToStore = this.config.tokenRoot && response[this.config.tokenRoot] ?
-        response[this.config.tokenRoot][this.config.tokenName] : response[this.config.tokenName];
-    }
-
-    if (tokenToStore) {
-      this.storage.set(this.tokenName, tokenToStore);
-    }
-
-    // id token handling
-    let idToken = response && response[this.config.responseIdTokenProp];
-
-    if (idToken) {
-      this.storage.set(this.idTokenName, idToken);
-    }
-
-    if (this.config.loginRedirect && !redirect) {
-      window.location.href = this.getLoginRedirect();
-    } else if (redirect && isString(redirect)) {
-      window.location.href = window.encodeURI(redirect);
-    }
-  }
-
-  removeToken() {
-    this.storage.remove(this.tokenName);
-  }
-
-  isAuthenticated() {
-    let token = this.storage.get(this.tokenName);
-
-    // There's no token, so user is not authenticated.
-    if (!token) {
-      return false;
-    }
-
-    // There is a token, but in a different format. Return true.
-    if (token.split('.').length !== 3) {
-      return true;
-    }
-
-    let exp;
-    try {
-      let base64Url = token.split('.')[1];
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      exp = JSON.parse(window.atob(base64)).exp;
-    } catch (error) {
-      return false;
-    }
-
-    if (exp) {
-      return Math.round(new Date().getTime() / 1000) <= exp;
-    }
-
-    return true;
-  }
-
-  logout(redirect) {
-    return new Promise(resolve => {
-      this.storage.remove(this.tokenName);
-
-      if (this.config.logoutRedirect && !redirect) {
-        window.location.href = this.config.logoutRedirect;
-      } else if (isString(redirect)) {
-        window.location.href = redirect;
-      }
-
-      resolve();
-    });
-  }
-
-  get tokenInterceptor() {
-    let config = this.config;
-    let storage = this.storage;
-    let auth = this;
-    return {
-      request(request) {
-        if (auth.isAuthenticated() && config.httpInterceptor) {
-          let tokenName = config.tokenPrefix ? `${config.tokenPrefix}_${config.tokenName}` : config.tokenName;
-          let token = storage.get(tokenName);
-
-          if (config.authHeader && config.authToken) {
-            token = `${config.authToken} ${token}`;
-          }
-
-          request.headers.set(config.authHeader, token);
-        }
-        return request;
-      }
-    };
-  }
-}
-
 @inject(Storage, Popup, HttpClient, BaseConfig)
 export class OAuth1 {
   constructor(storage, popup, http, config) {
@@ -751,44 +804,6 @@ export class OAuth1 {
     let str = [];
     forEach(obj, (value, key) => str.push(encodeURIComponent(key) + '=' + encodeURIComponent(value)));
     return str.join('&');
-  }
-}
-
-@inject(HttpClient, Authentication )
-export class FetchConfig {
-  constructor(httpClient, authService) {
-    this.httpClient = httpClient;
-    this.auth = authService;
-  }
-
-  configure() {
-    this.httpClient.configure(httpConfig => {
-      httpConfig
-        .withInterceptor(this.auth.tokenInterceptor);
-    });
-  }
-}
-
-@inject(Authentication)
-export class AuthorizeStep {
-  constructor(auth) {
-    this.auth = auth;
-  }
-  run(routingContext, next) {
-    let isLoggedIn = this.auth.isAuthenticated();
-    let loginRoute = this.auth.getLoginRoute();
-
-    if (routingContext.getAllInstructions().some(i => i.config.auth)) {
-      if (!isLoggedIn) {
-        this.auth.setInitialUrl(window.location.href);
-        return next.cancel(new Redirect(loginRoute));
-      }
-    } else if (isLoggedIn && routingContext.getAllInstructions().some(i => i.fragment === loginRoute)) {
-      let loginRedirect = this.auth.getLoginRedirect();
-      return next.cancel(new Redirect(loginRedirect));
-    }
-
-    return next();
   }
 }
 
