@@ -69,8 +69,6 @@ export class Authentication {
   }
 
   setToken(response, redirect) {
-    debugger;
-
     // access token handling
     let accessToken = response && response[this.config.responseTokenProp];
     let tokenToStore;
@@ -92,6 +90,11 @@ export class Authentication {
 
     if (tokenToStore) {
       this.storage.set(this.tokenName, tokenToStore);
+    }
+
+    let expiry = response && response[this.config.expiryDateProp];
+    if (expiry && this.config.expiryDateProp) {
+      this.storage.set(this.config.expiryDateProp, expiry);
     }
 
     // id token handling
@@ -120,22 +123,20 @@ export class Authentication {
       return false;
     }
 
-    // There is a token, but in a different format. Return true.
-    if (token.split(".").length !== 3) {
-      return true;
-    }
-
-    let exp;
-    try {
-      let base64Url = token.split(".")[1];
-      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      exp = JSON.parse(window.atob(base64)).exp;
-    } catch (error) {
-      return false;
-    }
-
-    if (exp) {
-      return Math.round(new Date().getTime() / 1000) <= exp;
+    let expStr = this.config && this.storage.get(this.config.expiryDateProp);
+    if (expStr) {
+      try {
+        let exp = Date.parse(expStr);
+        let now = Date.now();
+        if (now >= exp) {
+          //can't parse ->
+          return false;
+        }
+      } catch (error) {
+        console.error("Couldn't parse expiry date for access token.");
+        //Can't parse -> not authenticated
+        return false;
+      }
     }
 
     return true;

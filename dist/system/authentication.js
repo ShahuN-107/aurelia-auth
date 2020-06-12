@@ -99,8 +99,6 @@ System.register(["aurelia-dependency-injection", "./base-config", "./storage", "
         };
 
         Authentication.prototype.setToken = function setToken(response, redirect) {
-          debugger;
-
           var accessToken = response && response[this.config.responseTokenProp];
           var tokenToStore = void 0;
 
@@ -118,6 +116,11 @@ System.register(["aurelia-dependency-injection", "./base-config", "./storage", "
 
           if (tokenToStore) {
             this.storage.set(this.tokenName, tokenToStore);
+          }
+
+          var expiry = response && response[this.config.expiryDateProp];
+          if (expiry && this.config.expiryDateProp) {
+            this.storage.set(this.config.expiryDateProp, expiry);
           }
 
           var idToken = response && response[this.config.responseIdTokenProp];
@@ -144,21 +147,19 @@ System.register(["aurelia-dependency-injection", "./base-config", "./storage", "
             return false;
           }
 
-          if (token.split(".").length !== 3) {
-            return true;
-          }
+          var expStr = this.config && this.storage.get(this.config.expiryDateProp);
+          if (expStr) {
+            try {
+              var exp = Date.parse(expStr);
+              var now = Date.now();
+              if (now >= exp) {
+                return false;
+              }
+            } catch (error) {
+              console.error("Couldn't parse expiry date for access token.");
 
-          var exp = void 0;
-          try {
-            var base64Url = token.split(".")[1];
-            var base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-            exp = JSON.parse(window.atob(base64)).exp;
-          } catch (error) {
-            return false;
-          }
-
-          if (exp) {
-            return Math.round(new Date().getTime() / 1000) <= exp;
+              return false;
+            }
           }
 
           return true;
