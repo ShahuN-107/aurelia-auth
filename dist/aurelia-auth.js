@@ -238,7 +238,6 @@ export class Authentication {
   }
 
   setToken(response, redirect) {
-    debugger;
     // access token handling
     let accessToken = response && response[this.config.responseTokenProp];
     let tokenToStore;
@@ -260,6 +259,11 @@ export class Authentication {
 
     if (tokenToStore) {
       this.storage.set(this.tokenName, tokenToStore);
+    }
+
+    let expiry = response && response[this.config.expiryDateProp];
+    if (expiry && this.config.expiryDateProp) {
+      this.storage.set(this.config.expiryDateProp, expiry);
     }
 
     // id token handling
@@ -288,22 +292,20 @@ export class Authentication {
       return false;
     }
 
-    // There is a token, but in a different format. Return true.
-    if (token.split(".").length !== 3) {
-      return true;
-    }
-
-    let exp;
-    try {
-      let base64Url = token.split(".")[1];
-      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      exp = JSON.parse(window.atob(base64)).exp;
-    } catch (error) {
-      return false;
-    }
-
-    if (exp) {
-      return Math.round(new Date().getTime() / 1000) <= exp;
+    let expStr = this.config && this.storage.get(this.config.expiryDateProp);
+    if (expStr) {
+      try {
+        let exp = Date.parse(expStr);
+        let now = Date.now();
+        if (now >= exp) {
+          //can't parse ->
+          return false;
+        }
+      } catch (error) {
+        console.error("Couldn't parse expiry date for access token.");
+        //Can't parse -> not authenticated
+        return false;
+      }
     }
 
     return true;
@@ -353,6 +355,8 @@ export class AuthFilterValueConverter {
   }
 }
 
+import { merge } from "./auth-utilities";
+
 export class BaseConfig {
   configure(incomingConfig) {
     merge(this._current, incomingConfig);
@@ -366,175 +370,196 @@ export class BaseConfig {
     this._current = {
       httpInterceptor: true,
       loginOnSignup: true,
-      baseUrl: '/',
-      loginRedirect: '#/',
-      logoutRedirect: '#/',
-      signupRedirect: '#/login',
-      loginUrl: '/auth/login',
-      signupUrl: '/auth/signup',
-      profileUrl: '/auth/me',
-      loginRoute: '/login',
-      signupRoute: '/signup',
+      baseUrl: "/",
+      loginRedirect: "#/",
+      logoutRedirect: "#/",
+      signupRedirect: "#/login",
+      loginUrl: "/auth/login",
+      signupUrl: "/auth/signup",
+      profileUrl: "/auth/me",
+      loginRoute: "/login",
+      signupRoute: "/signup",
       tokenRoot: false,
-      tokenName: 'token',
-      idTokenName: 'id_token',
-      tokenPrefix: 'aurelia',
-      responseTokenProp: 'access_token',
-      responseIdTokenProp: 'id_token',
-      unlinkUrl: '/auth/unlink/',
-      unlinkMethod: 'get',
-      authHeader: 'Authorization',
-      authToken: 'Bearer',
+      tokenName: "token",
+      idTokenName: "id_token",
+      tokenPrefix: "aurelia",
+      responseTokenProp: "access_token",
+      responseIdTokenProp: "id_token",
+      expiryDateProp: "_expires",
+      unlinkUrl: "/auth/unlink/",
+      unlinkMethod: "get",
+      authHeader: "Authorization",
+      authToken: "Bearer",
       withCredentials: true,
-      platform: 'browser',
-      storage: 'localStorage',
+      platform: "browser",
+      storage: "localStorage",
       providers: {
         identSrv: {
-          name: 'identSrv',
-          url: '/auth/identSrv',
+          name: "identSrv",
+          url: "/auth/identSrv",
           //authorizationEndpoint: 'http://localhost:22530/connect/authorize',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          scope: ['profile', 'openid'],
-          responseType: 'code',
-          scopePrefix: '',
-          scopeDelimiter: ' ',
-          requiredUrlParams: ['scope', 'nonce'],
-          optionalUrlParams: ['display', 'state'],
-          state: function() {
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          scope: ["profile", "openid"],
+          responseType: "code",
+          scopePrefix: "",
+          scopeDelimiter: " ",
+          requiredUrlParams: ["scope", "nonce"],
+          optionalUrlParams: ["display", "state"],
+          state: function () {
             let rand = Math.random().toString(36).substr(2);
             return encodeURIComponent(rand);
           },
-          display: 'popup',
-          type: '2.0',
-          clientId: 'jsClient',
-          nonce: function() {
-            let val = ((Date.now() + Math.random()) * Math.random()).toString().replace('.', '');
+          display: "popup",
+          type: "2.0",
+          clientId: "jsClient",
+          nonce: function () {
+            let val = ((Date.now() + Math.random()) * Math.random())
+              .toString()
+              .replace(".", "");
             return encodeURIComponent(val);
           },
-          popupOptions: { width: 452, height: 633 }
+          popupOptions: { width: 452, height: 633 },
         },
         google: {
-          name: 'google',
-          url: '/auth/google',
-          authorizationEndpoint: 'https://accounts.google.com/o/oauth2/auth',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          scope: ['profile', 'email'],
-          scopePrefix: 'openid',
-          scopeDelimiter: ' ',
-          requiredUrlParams: ['scope'],
-          optionalUrlParams: ['display', 'state'],
-          display: 'popup',
-          type: '2.0',
-          state: function() {
+          name: "google",
+          url: "/auth/google",
+          authorizationEndpoint: "https://accounts.google.com/o/oauth2/auth",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          scope: ["profile", "email"],
+          scopePrefix: "openid",
+          scopeDelimiter: " ",
+          requiredUrlParams: ["scope"],
+          optionalUrlParams: ["display", "state"],
+          display: "popup",
+          type: "2.0",
+          state: function () {
             let rand = Math.random().toString(36).substr(2);
             return encodeURIComponent(rand);
           },
           popupOptions: {
             width: 452,
-            height: 633
-          }
+            height: 633,
+          },
         },
         facebook: {
-          name: 'facebook',
-          url: '/auth/facebook',
-          authorizationEndpoint: 'https://www.facebook.com/v2.3/dialog/oauth',
-          redirectUri: window.location.origin + '/' || window.location.protocol + '//' + window.location.host + '/',
-          scope: ['email'],
-          scopeDelimiter: ',',
-          nonce: function() {
+          name: "facebook",
+          url: "/auth/facebook",
+          authorizationEndpoint: "https://www.facebook.com/v2.3/dialog/oauth",
+          redirectUri:
+            window.location.origin + "/" ||
+            window.location.protocol + "//" + window.location.host + "/",
+          scope: ["email"],
+          scopeDelimiter: ",",
+          nonce: function () {
             return Math.random();
           },
-          requiredUrlParams: ['nonce', 'display', 'scope'],
-          display: 'popup',
-          type: '2.0',
+          requiredUrlParams: ["nonce", "display", "scope"],
+          display: "popup",
+          type: "2.0",
           popupOptions: {
             width: 580,
-            height: 400
-          }
+            height: 400,
+          },
         },
         linkedin: {
-          name: 'linkedin',
-          url: '/auth/linkedin',
-          authorizationEndpoint: 'https://www.linkedin.com/uas/oauth2/authorization',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          requiredUrlParams: ['state'],
-          scope: ['r_emailaddress'],
-          scopeDelimiter: ' ',
-          state: 'STATE',
-          type: '2.0',
+          name: "linkedin",
+          url: "/auth/linkedin",
+          authorizationEndpoint:
+            "https://www.linkedin.com/uas/oauth2/authorization",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          requiredUrlParams: ["state"],
+          scope: ["r_emailaddress"],
+          scopeDelimiter: " ",
+          state: "STATE",
+          type: "2.0",
           popupOptions: {
             width: 527,
-            height: 582
-          }
+            height: 582,
+          },
         },
         github: {
-          name: 'github',
-          url: '/auth/github',
-          authorizationEndpoint: 'https://github.com/login/oauth/authorize',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          optionalUrlParams: ['scope'],
-          scope: ['user:email'],
-          scopeDelimiter: ' ',
-          type: '2.0',
+          name: "github",
+          url: "/auth/github",
+          authorizationEndpoint: "https://github.com/login/oauth/authorize",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          optionalUrlParams: ["scope"],
+          scope: ["user:email"],
+          scopeDelimiter: " ",
+          type: "2.0",
           popupOptions: {
             width: 1020,
-            height: 618
-          }
+            height: 618,
+          },
         },
         yahoo: {
-          name: 'yahoo',
-          url: '/auth/yahoo',
-          authorizationEndpoint: 'https://api.login.yahoo.com/oauth2/request_auth',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
+          name: "yahoo",
+          url: "/auth/yahoo",
+          authorizationEndpoint:
+            "https://api.login.yahoo.com/oauth2/request_auth",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
           scope: [],
-          scopeDelimiter: ',',
-          type: '2.0',
+          scopeDelimiter: ",",
+          type: "2.0",
           popupOptions: {
             width: 559,
-            height: 519
-          }
+            height: 519,
+          },
         },
         twitter: {
-          name: 'twitter',
-          url: '/auth/twitter',
-          authorizationEndpoint: 'https://api.twitter.com/oauth/authenticate',
-          type: '1.0',
+          name: "twitter",
+          url: "/auth/twitter",
+          authorizationEndpoint: "https://api.twitter.com/oauth/authenticate",
+          type: "1.0",
           popupOptions: {
             width: 495,
-            height: 645
-          }
+            height: 645,
+          },
         },
         live: {
-          name: 'live',
-          url: '/auth/live',
-          authorizationEndpoint: 'https://login.live.com/oauth20_authorize.srf',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          scope: ['wl.emails'],
-          scopeDelimiter: ' ',
-          requiredUrlParams: ['display', 'scope'],
-          display: 'popup',
-          type: '2.0',
+          name: "live",
+          url: "/auth/live",
+          authorizationEndpoint: "https://login.live.com/oauth20_authorize.srf",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          scope: ["wl.emails"],
+          scopeDelimiter: " ",
+          requiredUrlParams: ["display", "scope"],
+          display: "popup",
+          type: "2.0",
           popupOptions: {
             width: 500,
-            height: 560
-          }
+            height: 560,
+          },
         },
         instagram: {
-          name: 'instagram',
-          url: '/auth/instagram',
-          authorizationEndpoint: 'https://api.instagram.com/oauth/authorize',
-          redirectUri: window.location.origin || window.location.protocol + '//' + window.location.host,
-          requiredUrlParams: ['scope'],
-          scope: ['basic'],
-          scopeDelimiter: '+',
-          display: 'popup',
-          type: '2.0',
+          name: "instagram",
+          url: "/auth/instagram",
+          authorizationEndpoint: "https://api.instagram.com/oauth/authorize",
+          redirectUri:
+            window.location.origin ||
+            window.location.protocol + "//" + window.location.host,
+          requiredUrlParams: ["scope"],
+          scope: ["basic"],
+          scopeDelimiter: "+",
+          display: "popup",
+          type: "2.0",
           popupOptions: {
             width: 550,
-            height: 369
-          }
-        }
-      }
+            height: 369,
+          },
+        },
+      },
     };
   }
 }
